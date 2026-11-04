@@ -22,6 +22,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Extract GrainBrick-Android.zip
+        run: unzip -o GrainBrick-Android.zip -d .
+
       - name: Build and run the engine tests (synthetic signals, fuzzing, threading, no-allocation check)
         run: |
           tests/host/build.sh build engine_test dump_params
@@ -38,6 +41,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
+
+      - name: Extract GrainBrick-Android.zip
+        run: unzip -o GrainBrick-Android.zip -d .
 
       - uses: actions/setup-java@v5
         with:
