@@ -15,15 +15,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Fast host-side checks: the whole DSP engine is plain C++17 and runs on the CI machine.
   engine-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
-      - name: Extract GrainBrick-Android.zip
-        run: unzip -o GrainBrick-Android.zip -d .
+      - name: Extrair GrainBrick-Android.zip
+        run: |
+          ZIP_PATH="$GITHUB_WORKSPACE/GrainBrick-Android.zip"
+          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
+
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "Não foi encontrado: $ZIP_PATH"
+            exit 1
+          fi
+
+          mkdir -p "$EXTRACT_DIR"
+          unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+
+          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
+            PROJECT_ROOT="$EXTRACT_DIR"
+          else
+            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
+            if [ -z "$BUILD_SCRIPT" ]; then
+              echo "Não foi encontrado tests/host/build.sh dentro do ZIP."
+              echo "Arquivos extraídos:"
+              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
+              exit 1
+            fi
+            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
+          fi
+
+          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
 
       - name: Build and run the engine tests (synthetic signals, fuzzing, threading, no-allocation check)
         run: |
@@ -42,8 +66,33 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Extract GrainBrick-Android.zip
-        run: unzip -o GrainBrick-Android.zip -d .
+      - name: Extrair GrainBrick-Android.zip
+        run: |
+          ZIP_PATH="$GITHUB_WORKSPACE/GrainBrick-Android.zip"
+          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
+
+          if [ ! -f "$ZIP_PATH" ]; then
+            echo "Não foi encontrado: $ZIP_PATH"
+            exit 1
+          fi
+
+          mkdir -p "$EXTRACT_DIR"
+          unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+
+          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
+            PROJECT_ROOT="$EXTRACT_DIR"
+          else
+            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
+            if [ -z "$BUILD_SCRIPT" ]; then
+              echo "Não foi encontrado tests/host/build.sh dentro do ZIP."
+              echo "Arquivos extraídos:"
+              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
+              exit 1
+            fi
+            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
+          fi
+
+          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
 
       - uses: actions/setup-java@v5
         with:
