@@ -21,25 +21,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Extrair GrainBrick-Android.zip
+      - name: Extrair arquivos ZIP da raiz
+        shell: bash
         run: |
-          ZIP_PATH="$GITHUB_WORKSPACE/GrainBrick-Android.zip"
           EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
+          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
 
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "Não foi encontrado: $ZIP_PATH"
+          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
+            ls -la "$GITHUB_WORKSPACE"
             exit 1
           fi
 
+          rm -rf "$EXTRACT_DIR"
           mkdir -p "$EXTRACT_DIR"
-          unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+
+          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
+            echo "Extraindo: $ZIP_PATH"
+            unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+          done
 
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
             PROJECT_ROOT="$EXTRACT_DIR"
           else
             BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
             if [ -z "$BUILD_SCRIPT" ]; then
-              echo "Não foi encontrado tests/host/build.sh dentro do ZIP."
+              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
               echo "Arquivos extraídos:"
               find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
               exit 1
@@ -66,25 +73,32 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Extrair GrainBrick-Android.zip
+      - name: Extrair arquivos ZIP da raiz
+        shell: bash
         run: |
-          ZIP_PATH="$GITHUB_WORKSPACE/GrainBrick-Android.zip"
           EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
+          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
 
-          if [ ! -f "$ZIP_PATH" ]; then
-            echo "Não foi encontrado: $ZIP_PATH"
+          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
+            ls -la "$GITHUB_WORKSPACE"
             exit 1
           fi
 
+          rm -rf "$EXTRACT_DIR"
           mkdir -p "$EXTRACT_DIR"
-          unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+
+          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
+            echo "Extraindo: $ZIP_PATH"
+            unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+          done
 
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
             PROJECT_ROOT="$EXTRACT_DIR"
           else
             BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
             if [ -z "$BUILD_SCRIPT" ]; then
-              echo "Não foi encontrado tests/host/build.sh dentro do ZIP."
+              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
               echo "Arquivos extraídos:"
               find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
               exit 1
