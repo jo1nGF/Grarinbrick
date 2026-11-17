@@ -37,8 +37,19 @@ jobs:
           mkdir -p "$EXTRACT_DIR"
 
           for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-            echo "Extraindo: $ZIP_PATH"
-            unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
+            # Testa o zip primeiro: se estiver truncado/corrompido, diz isso claramente.
+            if ! unzip -tq "$ZIP_PATH"; then
+              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
+              exit 1
+            fi
+            # Codigo 1 do unzip = so avisos; qualquer outro codigo e erro de verdade.
+            rc=0
+            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
+              exit "$rc"
+            fi
           done
 
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
@@ -89,8 +100,19 @@ jobs:
           mkdir -p "$EXTRACT_DIR"
 
           for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-            echo "Extraindo: $ZIP_PATH"
-            unzip -o "$ZIP_PATH" -d "$EXTRACT_DIR"
+            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
+            # Testa o zip primeiro: se estiver truncado/corrompido, diz isso claramente.
+            if ! unzip -tq "$ZIP_PATH"; then
+              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
+              exit 1
+            fi
+            # Codigo 1 do unzip = so avisos; qualquer outro codigo e erro de verdade.
+            rc=0
+            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
+              exit "$rc"
+            fi
           done
 
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
