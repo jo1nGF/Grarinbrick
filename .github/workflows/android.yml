@@ -15,57 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Fast host-side checks: the whole DSP engine is plain C++17 and runs on the CI machine.
   engine-tests:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-
-      - name: Extrair arquivos ZIP da raiz
-        shell: bash
-        run: |
-          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
-          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
-
-          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
-            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
-            ls -la "$GITHUB_WORKSPACE"
-            exit 1
-          fi
-
-          rm -rf "$EXTRACT_DIR"
-          mkdir -p "$EXTRACT_DIR"
-
-          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
-            # Testa o zip primeiro: se estiver truncado/corrompido, diz isso claramente.
-            if ! unzip -tq "$ZIP_PATH"; then
-              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
-              exit 1
-            fi
-            # Codigo 1 do unzip = so avisos; qualquer outro codigo e erro de verdade.
-            rc=0
-            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
-            if [ "$rc" -gt 1 ]; then
-              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
-              exit "$rc"
-            fi
-          done
-
-          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
-            PROJECT_ROOT="$EXTRACT_DIR"
-          else
-            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
-            if [ -z "$BUILD_SCRIPT" ]; then
-              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
-              echo "Arquivos extraídos:"
-              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
-              exit 1
-            fi
-            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
-          fi
-
-          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
 
       - name: Build and run the engine tests (synthetic signals, fuzzing, threading, no-allocation check)
         run: |
@@ -83,52 +38,6 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
-
-      - name: Extrair arquivos ZIP da raiz
-        shell: bash
-        run: |
-          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
-          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
-
-          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
-            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
-            ls -la "$GITHUB_WORKSPACE"
-            exit 1
-          fi
-
-          rm -rf "$EXTRACT_DIR"
-          mkdir -p "$EXTRACT_DIR"
-
-          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
-            # Testa o zip primeiro: se estiver truncado/corrompido, diz isso claramente.
-            if ! unzip -tq "$ZIP_PATH"; then
-              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
-              exit 1
-            fi
-            # Codigo 1 do unzip = so avisos; qualquer outro codigo e erro de verdade.
-            rc=0
-            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
-            if [ "$rc" -gt 1 ]; then
-              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
-              exit "$rc"
-            fi
-          done
-
-          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
-            PROJECT_ROOT="$EXTRACT_DIR"
-          else
-            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
-            if [ -z "$BUILD_SCRIPT" ]; then
-              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
-              echo "Arquivos extraídos:"
-              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
-              exit 1
-            fi
-            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
-          fi
-
-          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
 
       - uses: actions/setup-java@v5
         with:
@@ -209,3 +118,4 @@ jobs:
           files: dist/*.apk
           generate_release_notes: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
