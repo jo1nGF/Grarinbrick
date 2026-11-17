@@ -1,43 +1,45 @@
-EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
-mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
+      - name: Extrair e preparar projeto
+        run: |
+          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
+          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
 
-if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
-  echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
-  ls -la "$GITHUB_WORKSPACE"
-  exit 1
-fi
+          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
+            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
+            ls -la "$GITHUB_WORKSPACE"
+            exit 1
+          fi
 
-rm -rf "$EXTRACT_DIR"
-mkdir -p "$EXTRACT_DIR"
+          rm -rf "$EXTRACT_DIR"
+          mkdir -p "$EXTRACT_DIR"
 
-for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-  echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
-  if ! unzip -tq "$ZIP_PATH"; then
-    echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
-    exit 1
-  fi
-  rc=0
-  unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
-  if [ "$rc" -gt 1 ]; then
-    echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
-    exit "$rc"
-  fi
-done
+          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
+            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
+            if ! unzip -tq "$ZIP_PATH"; then
+              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
+              exit 1
+            fi
+            rc=0
+            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
+            if [ "$rc" -gt 1 ]; then
+              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
+              exit "$rc"
+            fi
+          done
 
-# Corrige permissões restritas vindas do ZIP (ex: pastas com permissão 000)
-chmod -R u+rwX "$EXTRACT_DIR"
+          # Corrige permissões restritas vindas do ZIP (ex: pastas com permissão 000)
+          chmod -R u+rwX "$EXTRACT_DIR"
 
-if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
-  PROJECT_ROOT="$EXTRACT_DIR"
-else
-  BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
-  if [ -z "$BUILD_SCRIPT" ]; then
-    echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
-    echo "Arquivos extraídos:"
-    find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
-    exit 1
-  fi
-  PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
-fi
+          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
+            PROJECT_ROOT="$EXTRACT_DIR"
+          else
+            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
+            if [ -z "$BUILD_SCRIPT" ]; then
+              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
+              echo "Arquivos extraídos:"
+              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
+              exit 1
+            fi
+            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
+          fi
 
-cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
+          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
