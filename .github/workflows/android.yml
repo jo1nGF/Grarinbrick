@@ -1,67 +1,120 @@
-name: Build and Test GrainBrick
+name: Android
 
 on:
   push:
-    branches: [ "**" ]
+    branches: [main, master]
+    tags: ["v*"]
   pull_request:
-    branches: [ "**" ]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build:
+  # Fast host-side checks: the whole DSP engine is plain C++17 and runs on the CI machine.
+  engine-tests:
     runs-on: ubuntu-latest
-
+    timeout-minutes: 20
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Extrair e preparar projeto
+      - name: Build and run the engine tests (synthetic signals, fuzzing, threading, no-allocation check)
         run: |
-          EXTRACT_DIR="$RUNNER_TEMP/grainbrick-zip"
-          mapfile -d '' ZIP_PATHS < <(find "$GITHUB_WORKSPACE" -maxdepth 1 -type f -iname '*.zip' -print0)
+          tests/host/build.sh build engine_test dump_params
+          ./build/engine_test
 
-          if [ "${#ZIP_PATHS[@]}" -eq 0 ]; then
-            echo "Nenhum arquivo ZIP foi encontrado na raiz de $GITHUB_WORKSPACE"
-            ls -la "$GITHUB_WORKSPACE"
-            exit 1
-          fi
+      - name: Validate bundled presets against the parameter registry
+        run: |
+          ./build/dump_params > build/params.tsv
+          python3 tools/validate_presets.py build/params.tsv
 
-          rm -rf "$EXTRACT_DIR"
-          mkdir -p "$EXTRACT_DIR"
+  apk:
+    needs: engine-tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
 
-          for ZIP_PATH in "${ZIP_PATHS[@]}"; do
-            echo "Extraindo: $ZIP_PATH ($(stat -c %s "$ZIP_PATH") bytes)"
-            if ! unzip -tq "$ZIP_PATH"; then
-              echo "::error::O ZIP '$ZIP_PATH' esta corrompido ou incompleto. Envie o arquivo de novo."
-              exit 1
-            fi
-            rc=0
-            unzip -oq "$ZIP_PATH" -d "$EXTRACT_DIR" || rc=$?
-            if [ "$rc" -gt 1 ]; then
-              echo "::error::unzip falhou com codigo $rc em '$ZIP_PATH'"
-              exit "$rc"
-            fi
-          done
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
 
-          # Corrige permissões restritas vindas do ZIP (ex: pastas com permissão 000)
-          chmod -R u+rwX "$EXTRACT_DIR"
+      - name: Set up the Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ""
 
-          if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
-            PROJECT_ROOT="$EXTRACT_DIR"
+      - name: Install SDK, NDK and CMake
+        run: |
+          yes | sdkmanager --licenses > /dev/null || true
+          sdkmanager --install "platforms;android-36" "build-tools;35.0.0" \
+            "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Restore the release keystore (optional)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.GB_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "GB_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "Release keystore restored: the release APK will be signed with it."
           else
-            BUILD_SCRIPT=$(find "$EXTRACT_DIR" -type f -path '*/tests/host/build.sh' -print -quit)
-            if [ -z "$BUILD_SCRIPT" ]; then
-              echo "Não foi encontrado tests/host/build.sh nos arquivos ZIP extraídos."
-              echo "Arquivos extraídos:"
-              find "$EXTRACT_DIR" -maxdepth 5 -type f | sort | head -200
-              exit 1
-            fi
-            PROJECT_ROOT="${BUILD_SCRIPT%/tests/host/build.sh}"
+            echo "No GB_KEYSTORE_BASE64 secret: the release APK will be signed with the debug key."
           fi
 
-          cp -a "$PROJECT_ROOT"/. "$GITHUB_WORKSPACE"/
+      - name: Build debug and release APKs
+        env:
+          GB_KEYSTORE_PASSWORD: ${{ secrets.GB_KEYSTORE_PASSWORD }}
+          GB_KEY_ALIAS: ${{ secrets.GB_KEY_ALIAS }}
+          GB_KEY_PASSWORD: ${{ secrets.GB_KEY_PASSWORD }}
+        run: ./gradlew --no-daemon --stacktrace assembleDebug assembleRelease
 
-      - name: Executar testes e build
+      - name: Collect APKs
         run: |
-          chmod +x tests/host/build.sh
-          ./tests/host/build.sh
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -n1)
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/GrainBrick-${VERSION}-debug.apk"
+          cp app/build/outputs/apk/release/app-release.apk "dist/GrainBrick-${VERSION}-release.apk"
+          ls -l dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: GrainBrick-APKs
+          path: dist/*.apk
+          if-no-files-found: error
+
+      - name: Upload native build logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-build-logs
+          path: |
+            app/.cxx/**/*.txt
+            app/.cxx/**/*.log
+            app/build/reports/**
+          if-no-files-found: ignore
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: apk
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: GrainBrick-APKs
+          path: dist
+
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*.apk
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}
