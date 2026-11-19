@@ -52,6 +52,9 @@ jobs:
             fi
           done
 
+          # Alguns arquivos de um ZIP podem vir sem permissao de leitura: normaliza antes de usar.
+          chmod -R u+rwX "$EXTRACT_DIR"
+
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
             PROJECT_ROOT="$EXTRACT_DIR"
           else
@@ -116,6 +119,9 @@ jobs:
               exit "$rc"
             fi
           done
+
+          # Alguns arquivos de um ZIP podem vir sem permissao de leitura: normaliza antes de usar.
+          chmod -R u+rwX "$EXTRACT_DIR"
 
           if [ -f "$EXTRACT_DIR/tests/host/build.sh" ]; then
             PROJECT_ROOT="$EXTRACT_DIR"
